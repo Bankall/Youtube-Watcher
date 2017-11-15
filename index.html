@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Y'a quoi à regarder ?</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+		
+		<link href="http://fonts.googleapis.com/css?family=Lato:300,400,800" rel="stylesheet" type="text/css">
+		
+		<style>
+			
+			body, html {
+				width : 100%;
+				height : 100%;
+				padding: 0;
+				margin: 0;
+				font-family: Lato, sans-serif;
+			}
+			
+			.channel {
+				font-size: 0;
+				margin: 10px;
+				border-bottom: 1px solid #CCC;
+				background: #FBFBFB;
+			}
+			
+			.left, .right {
+				display: inline-block;
+				vertical-align: top;
+				font-size : 12px;
+			}
+			
+			.left img {
+				width : 100px;
+			}
+			
+			.right {
+				width : calc(100% - 100px);
+				box-sizing: border-box;
+				padding-left: 10px;
+			}
+			
+			.right .title a {
+				color : #b31217;
+				font-weight: 800;
+			}
+			
+			.videos {
+				margin: 10px;
+				font-size: 12px;
+				margin-left: 50px;
+				border-top: 1px solid #CCC;
+				padding: 10px;
+				background: #FFF;
+			}
+			
+			.video {
+				margin: 10px;
+				display: inline-block;
+				vertical-align: top;
+				width: 200px;
+				cursor : pointer;
+				position: relative;
+			}
+			
+			.video img {
+				width : 100%;
+			}
+			
+			.video .viewed-overlay {
+				position: absolute;
+				top: 10px;
+				left: 10px;
+				background: #000;
+				color: #FFF;
+				padding: 2px 10px;
+				opacity: 0;
+			}
+			
+			.video.viewed img {
+				opacity: 0.4;
+			}
+			
+			.video.viewed .viewed-overlay {
+				opacity: 0.6;
+			}
+			
+			.video .title {
+				color : #b31217;
+			}
+			
+			.video .meta {
+				margin-top : 10px;
+			}
+			
+			.video .meta div {
+				display: inline-block;
+				vertical-align: top;
+				font-size : 12px;
+			}
+			
+			.video .meta .spacer {
+				margin : 0 5px;
+			}
+			
+			.popin {
+				width : 100%;
+				height : 100%;
+				position: fixed;
+				top: 0;
+				left: 0;
+			}
+			
+			.popin .background {
+				width: 100%;
+				height: 100%;
+				background: #000;
+				opacity: 0.6;
+				position: absolute;
+				top: 0;
+				left: 0;
+			}
+			
+			.popin .content {
+				  box-sizing: border-box;
+				  width: calc(100% - 10px);
+				  height: calc(100% - 35px);
+				  left: 5px;
+				  top: 30px;
+				  position: relative;
+				  background: #FFF;
+			}
+			
+			.popin .content iframe {
+				width : 100%;
+				height : 100%;
+				border: 0;
+			}
+			
+			.popin .close {
+				height : 20px;
+				position: absolute;
+				right: 0px;
+				top : 0px;
+				font-size : 14px;
+				cursor : pointer;
+				color : #FFF;
+				z-index: 200;
+				padding : 5px 10px;
+			}
+			
+			.loading {
+				width : 64px;
+				height : 64px;
+				margin: 20px auto;
+				background : url(loaderflat64_00bb88.gif) no-repeat;
+			}
+		</style>
+	</head>
+	<body>
+		<button id="authorize-button" style="display: none">Connexion</button>
+		<div class="loading"></div>
+		<script type="text/javascript">
+			var clientId = "883394794237-pm1cakei8lc4g88ont4i4te7s173dns1.apps.googleusercontent.com",
+				apiKey = "AIzaSyCSQwZZ3ISFysWgND8NOPOnF7WEz4LMTvQ",
+				scopes = "https://www.googleapis.com/auth/youtube";
+
+			function handleClientLoad() {
+				gapi.client.setApiKey(apiKey);
+				window.setTimeout(checkAuth, 1);
+			}
+
+			function checkAuth() {
+				gapi.auth.authorize({
+					client_id: clientId,
+					scope: scopes,
+					immediate: true
+				}, handleAuthResult);
+			}
+
+
+			function handleAuthResult(authResult) {
+				var authorizeButton = document.getElementById("authorize-button");
+			
+				if(authResult && !authResult.error) {
+					authorizeButton.style.display = "none";
+					makeApiCall();
+				} else {
+					authorizeButton.style.display = "block";
+					authorizeButton.onclick = handleAuthClick;
+					
+					document.querySelector(".loading").style.display = "none";
+				}
+			}
+
+			function handleAuthClick(event) {
+				gapi.auth.authorize({
+					client_id: clientId,
+					scope: scopes,
+					immediate: false
+				}, handleAuthResult);
+			}
+
+			function makeApiCall() {
+				gapi.client.load("youtube", "v3", function (resp) {
+					
+					window.watchHistory = [];
+					
+					getWatchHistory(function() {
+						var request = gapi.client.youtube.subscriptions.list({
+							"part" : "snippet",
+							"mine" : true,
+							"maxResults" : 50
+						});
+
+						request.execute(function (resp) {
+							
+							document.querySelector(".loading").style.display = "none";
+							
+							for(var i = 0; i < resp.items.length; i ++) {
+								handleSubscribedChannel(resp.items[i]);
+							}
+						});
+					});
+				});
+			}
+			
+			function getWatchHistory(callback) {
+				
+				var request = gapi.client.youtube.channels.list({
+					"part" : "contentDetails",
+					"mine" : true
+				});
+
+				request.execute(function (resp) {
+					if(resp.items[0].contentDetails) {
+						var nb = 0;
+						var getHistoryResults = function(token) {
+							
+							var watch_history_id = resp.items[0].contentDetails.relatedPlaylists.watchHistory,
+								request, 
+								opts;
+							
+							opts = {
+								"part" : "snippet",
+								"maxResults" : 50,
+								"playlistId" : watch_history_id
+							};
+							
+							if(token) {
+								opts.pageToken = token;
+							}
+							
+							request = gapi.client.youtube.playlistItems.list(opts);							
+							request.execute(function(resp) {
+								
+								for(var i = 0; i < resp.items.length; i ++) {
+									var id = resp.items[i].snippet.resourceId.videoId;
+									window.watchHistory.push(id);
+								}
+								
+								nb ++;
+								
+								if(resp.nextPageToken && nb < 3) {
+									console.log("Oops there is another page", resp.nextPageToken);
+									getHistoryResults(resp.nextPageToken);
+								} else {
+									callback();	
+								}								
+							});
+						};
+						
+						getHistoryResults();
+
+					} else {
+						callback();
+					}
+				});
+			}
+			
+			function handleSubscribedChannel(channel) {
+				
+				var wrapper = document.getElementById("content"),
+					local_wrapper = document.createElement("div");
+				
+				local_wrapper.className = "channel";
+				wrapper.appendChild(local_wrapper);
+				
+				local_wrapper.innerHTML = 	'<div class="left"><img class="thumbnail" src="' + channel.snippet.thumbnails.high.url + '"></div>' +
+											'<div class="right">' +
+											'	<div class="title">' +
+											'		<a href="https://www.youtube.com/channel/' + channel.snippet.resourceId.channelId + '" target="_blank">' + channel.snippet.title + '</a>' +
+											'	</div>' +
+											'	<div class="description">' +
+											'	' + channel.snippet.description +
+											'	</div>' +
+											'</div>' +
+											'<div class="videos"></div>';
+				
+				var request = gapi.client.youtube.search.list({
+					"part" : "snippet",
+					"maxResults" : 50,
+					"order" : "date",
+					"publishedAfter" : new Date(new Date().getTime() - (86400000 * 10)).toISOString(),
+					"channelId" : channel.snippet.resourceId.channelId
+				});
+															  
+				request.execute(function (resp) {
+					handleVideos(resp, local_wrapper);
+				});
+			}
+			
+			function handleVideos(videos, wrapper) {
+				var local_wrapper = wrapper.querySelector(".videos");
+				
+				if(videos.items.length === 0) {
+					local_wrapper.innerHTML = "Aucune nouvelles vidéos";
+				} else {
+					for(var i = 0; i < videos.items.length; i ++) {
+						handleVideo(videos.items[i], local_wrapper);
+					}
+				}
+			}
+			
+			function getAddedTime(date) {
+				var now = new Date().getTime(),
+					date = new Date(date).getTime(),
+					diff = now - date;
+				
+				if(diff / 86400000 > 1) {
+					return parseInt(diff / 86400000, 10) + "j";
+				} else if((diff / 86400000) * 24 > 1) {
+					return parseInt((diff / 86400000) * 24, 10) + "h";
+				} else {
+					return parseInt((diff / 86400000) * 24 * 60, 10) + "min";
+				}
+				
+			}
+			
+			function handleVideo(data, wrapper) {
+				
+				var video = document.createElement("div");
+				
+				video.id = data.id.videoId;
+				video.className = "video" + (window.watchHistory.indexOf(video.id) !== -1 ? " viewed" : "");
+				
+				video.innerHTML = 	'<img class="video-thumbnail" src="' + data.snippet.thumbnails.medium.url + '">' +
+									'<div class="viewed-overlay">Vue</div>' +
+									'<div class="title">' +
+									'	' + data.snippet.title +
+									'</div>' +
+									'<div class="meta">' +
+									'	<div class="duration">' +
+									'	</div>' +
+									'	<div class="spacer">' +
+									'		- ' +
+									'	</div>' +
+									'	<div class="date">' +
+									'		il y a ' + getAddedTime(data.snippet.publishedAt) +
+									'	</div>' +
+									'</div>';
+				
+				video.addEventListener("click", function() {
+					playVideo(this.id);
+				});
+				
+				wrapper.appendChild(video);
+				
+				var request = gapi.client.youtube.videos.list({
+					"part" : "contentDetails",
+					"id" : video.id
+				});
+															  
+				request.execute(function (resp) {
+					var duration = resp.items[0].contentDetails.duration.toLowerCase().replace(/^pt/, "");
+					
+					if(duration.match(/h|m/)) {
+						duration = duration.replace(/[0-9]+s/, "");
+					}
+					
+					if(duration.match(/h/)) {
+						duration = duration.replace("m", "");
+					}
+					
+					duration = duration.replace("m", "min");
+					
+					video.querySelector(".duration").appendChild(document.createTextNode(duration));
+				});
+			}
+			
+			function playVideo(id) {
+				
+				document.getElementById(id).classList.add("viewed");
+				
+				if(document.querySelector(".popin")) {
+					document.body.removeChild(document.querySelector(".popin"));
+				}
+				
+				var popin = document.createElement("div");
+				
+				popin.className = "popin";
+				
+				popin.innerHTML = 	'<div class="background"></div>' +
+									'<div class="content"></div>' +
+									'<div class="close">X FERMER</div>';
+				
+				document.body.appendChild(popin);
+				
+				popin.querySelector(".close").addEventListener("click", function() {
+					document.body.removeChild(document.querySelector(".popin"));
+				});
+				
+				var player = new YT.Player(popin.querySelector(".content"), {
+					height: "100%",
+					width: "100%",
+					videoId: id,
+					events: {
+						"onReady": function(event) {
+							event.target.playVideo();
+						},
+						"onStateChange": function(event) {
+							if(event.data == YT.PlayerState.ENDED) {
+								document.body.removeChild(document.querySelector(".popin"));
+							}
+						}
+					}
+				});
+			}
+			
+			
+		</script>
+		
+		<script src="https://apis.google.com/js/client.js?onload=handleClientLoad"></script>
+		<script src="https://www.youtube.com/iframe_api"></script>
+		
+		<div id="content"></div>
+	</body>
+
+</html>
